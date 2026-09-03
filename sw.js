@@ -1,8 +1,9 @@
-const CACHE_NAME = 'session-timer-v1';
+const CACHE_NAME = 'session-timer-v2';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
+  './vendor/qrcode.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png'

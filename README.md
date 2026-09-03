@@ -8,9 +8,10 @@ Live: https://officialAY.github.io/focus-timer/
 - Build a schedule of segments (session / break / lunch / custom), each with its own duration
 - Save named presets and reload a full schedule with one click
 - Remembers your last queue, theme, and mute state (localStorage) between visits
-- Installable as an app (PWA) and works offline once loaded, on desktop and mobile
+- Installable as an app (PWA) and works fully offline once loaded (service worker + a locally bundled QR library — no CDN dependency), on desktop and mobile
+- "Open on phone" QR card — scan to load the same timer on another device
 - Optional browser notifications when a segment ends
-- Light/dark theme, fullscreen mode, keyboard shortcuts
+- Light/dark theme (follows your OS preference on first visit, then remembers your choice), fullscreen mode, keyboard shortcuts, no sign-in
 
 ## Keyboard shortcuts
 - `Space` — start / pause
