@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Session Timer</title>
+<meta name="description" content="A minimal, distraction-free schedule timer for sessions, breaks and custom segments." />
+<meta name="theme-color" content="#15181D" />
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+  :root{
+    --bg: #15181D;
+    --bg-soft: #1B1F26;
+    --bg-soft2: #21262E;
+    --session: #E8963D;
+    --break: #4DB6A6;
+    --lunch: #E0735A;
+    --custom: #9084E8;
+    --text: #EDEAE3;
+    --muted: #5A6270;
+    --line: #262B33;
+  }
+
+  html.light{
+    --bg: #F3F1EC;
+    --bg-soft: #E8E4DB;
+    --bg-soft2: #DFDACD;
+    --session: #C9701E;
+    --break: #22796B;
+    --lunch: #C24E36;
+    --custom: #6656C9;
+    --text: #22252B;
+    --muted: #8A8578;
+    --line: #D8D3C6;
+  }
+
+  *{ margin:0; padding:0; box-sizing:border-box; }
+
+  html,body{
+    height:100%;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Space Grotesk', system-ui, sans-serif;
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  body{ transition: background 0.4s ease, color 0.4s ease; }
+
+  #app{
+    height:100vh;
+    width:100vw;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    position:relative;
+  }
+
+  /* ---------- top bar ---------- */
+  .top-right{
+    position:absolute;
+    top:20px;
+    right:24px;
+    display:flex;
+    gap:8px;
+    align-items:center;
+    z-index:5;
+    transition:opacity 0.4s ease;
+  }
+  .top-right.idle-hide{ opacity:0.1; }
+  .top-right.idle-hide:hover{ opacity:1; }
+
+  .icon-btn{
+    width:36px; height:36px; padding:0;
+    display:flex; align-items:center; justify-content:center;
+    font-size:15px;
+    background:transparent; border:none; color:var(--muted);
+    border-radius:8px; cursor:pointer;
+    transition: color 0.2s ease, background 0.2s ease;
+  }
+  .icon-btn:hover{ color:var(--text); background:var(--bg-soft); }
+
+  .ghost-btn{
+    background:transparent; border:1px solid var(--line); color:var(--muted);
+    font-family:inherit; font-size:13px; font-weight:500;
+    padding:8px 14px; border-radius:8px; cursor:pointer;
+    transition: color 0.2s ease, border-color 0.2s ease;
+  }
+  .ghost-btn:hover{ color:var(--text); border-color:var(--muted); }
+
+  /* ---------- run view ---------- */
+  #runView{ display:flex; flex-direction:column; align-items:center; }
+
+  .queue-pos{
+    font-size:clamp(12px, 1.4vw, 14px);
+    color:var(--muted); font-weight:500; margin-bottom:6px;
+  }
+
+  .state-label{
+    font-size:clamp(16px, 2.4vw, 24px);
+    font-weight:600; margin-bottom:14px; transition:color 0.4s ease;
+  }
+
+  .ring-wrap{
+    position:relative; display:flex; align-items:center; justify-content:center;
+    width:min(58vmin, 480px); height:min(58vmin, 480px);
+  }
+  svg.ring{ position:absolute; top:0; left:0; width:100%; height:100%; transform:rotate(-90deg); }
+  .ring-track{ fill:none; stroke:var(--line); stroke-width:3; }
+  .ring-progress{ fill:none; stroke-width:3; stroke-linecap:round; transition: stroke-dashoffset 1s linear, stroke 0.6s ease; }
+
+  .clock{
+    font-size:clamp(52px, 11vw, 120px); font-weight:700;
+    font-variant-numeric: tabular-nums; letter-spacing:-0.02em; line-height:1; z-index:2;
+  }
+  .sub{ margin-top:10px; font-size:clamp(13px, 1.6vw, 16px); color:var(--muted); font-weight:500; z-index:2; }
+
+  .info-cards{
+    display:flex; gap:16px; margin-top:34px; flex-wrap:wrap; justify-content:center;
+    max-width:640px;
+  }
+  .info-card{
+    background:var(--bg-soft); border:1px solid var(--line); border-radius:10px;
+    padding:12px 18px; text-align:center; min-width:150px;
+  }
+  .info-card .lbl{ font-size:11px; color:var(--muted); font-weight:500; letter-spacing:0.03em; margin-bottom:4px; }
+  .info-card .val{ font-size:17px; font-weight:600; }
+
+  .controls{ position:absolute; bottom:40px; display:flex; gap:12px; align-items:center; transition:opacity 0.4s ease; }
+  .controls.idle-hide{ opacity:0.1; }
+  .controls.idle-hide:hover{ opacity:1; }
+
+  button.ctrl{
+    font-family:inherit; background:var(--bg-soft); border:1px solid var(--line); color:var(--text);
+    padding:12px 22px; font-size:14px; font-weight:500; border-radius:8px; cursor:pointer;
+    transition: filter 0.2s ease, transform 0.1s ease;
+  }
+  button.ctrl:hover{ filter:brightness(1.15); }
+  button.ctrl:active{ transform:scale(0.97); }
+  button.ctrl.primary{ color:#1A1206; }
+  button.ctrl:disabled{ opacity:0.35; cursor:default; }
+
+  .hint{
+    position:absolute; bottom:12px; right:24px; font-size:11px; color:var(--muted); opacity:0.45; z-index:3;
+    transition:opacity 0.4s ease;
+  }
+  .hint.idle-hide{ opacity:0.05; }
+
+  /* ---------- setup / builder view ---------- */
+  #setupView{
+    display:none; flex-direction:column; align-items:center;
+    width:min(640px, 92vw); max-height:88vh; overflow-y:auto; padding:20px 4px 100px;
+  }
+  #setupView h1{ font-size:22px; font-weight:700; margin-bottom:4px; }
+  #setupView .lead{ font-size:13px; color:var(--muted); margin-bottom:24px; }
+
+  #setupView h2{ font-size:13px; font-weight:600; color:var(--muted); letter-spacing:0.03em; text-transform:uppercase; margin-bottom:10px; align-self:flex-start; }
+
+  /* ---------- presets ---------- */
+  .presets-section{ width:100%; margin-bottom:24px; }
+  .preset-list{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+  .preset-chip{
+    display:flex; align-items:center; gap:8px;
+    background:var(--bg-soft); border:1px solid var(--line); border-radius:20px;
+    padding:8px 8px 8px 14px; font-size:13px; font-weight:500; cursor:pointer;
+    transition: filter 0.2s ease, border-color 0.2s ease;
+  }
+  .preset-chip:hover{ border-color:var(--muted); }
+  .preset-chip .del{
+    background:transparent; border:none; color:var(--muted); font-size:13px; cursor:pointer;
+    width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+  }
+  .preset-chip .del:hover{ color:var(--lunch); background:var(--bg-soft2); }
+  .save-preset-row{ display:flex; gap:8px; }
+  .save-preset-row input[type="text"]{
+    flex:1; background:var(--bg-soft); border:1px solid var(--line); color:var(--text); font-family:inherit;
+    font-size:13px; padding:10px 12px; border-radius:8px;
+  }
+  .save-preset-row input[type="text"]:focus{ outline:none; border-color:var(--muted); }
+  .save-preset-row button{
+    font-family:inherit; background:var(--bg-soft2); border:1px solid var(--line); color:var(--text);
+    font-size:13px; font-weight:500; padding:10px 16px; border-radius:8px; cursor:pointer; white-space:nowrap;
+  }
+  .save-preset-row button:hover{ filter:brightness(1.15); }
+  .save-preset-row button:disabled{ opacity:0.4; cursor:default; }
+  .preset-empty{ font-size:12px; color:var(--muted); margin-bottom:10px; }
+
+  .queue-list{ width:100%; display:flex; flex-direction:column; gap:8px; margin-bottom:16px; }
+  .queue-row{
+    display:flex; align-items:center; gap:10px;
+    background:var(--bg-soft); border:1px solid var(--line); border-radius:10px; padding:10px 12px;
+  }
+  .queue-row .dot{ width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .queue-row input[type="text"]{
+    flex:1; background:transparent; border:none; color:var(--text); font-family:inherit;
+    font-size:14px; font-weight:500; padding:4px 2px;
+  }
+  .queue-row input[type="text"]:focus{ outline:none; }
+  .queue-row select{
+    background:var(--bg-soft2); border:1px solid var(--line); color:var(--text); font-family:inherit;
+    font-size:12px; padding:6px 8px; border-radius:6px;
+  }
+  .queue-row .dur{
+    width:56px; background:var(--bg-soft2); border:1px solid var(--line); color:var(--text);
+    font-family:inherit; font-size:13px; font-weight:600; text-align:center; padding:6px 4px; border-radius:6px;
+  }
+  .queue-row .dur:focus{ outline:none; border-color:var(--muted); }
+  .queue-row .unit{ font-size:11px; color:var(--muted); }
+  .queue-row .del{
+    background:transparent; border:none; color:var(--muted); font-size:16px; cursor:pointer; padding:4px 6px;
+  }
+  .queue-row .del:hover{ color:var(--lunch); }
+
+  .quick-add{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; width:100%; }
+  .quick-btn{
+    font-family:inherit; font-size:12px; font-weight:500; padding:8px 12px; border-radius:20px;
+    border:1px solid var(--line); background:transparent; cursor:pointer; display:flex; align-items:center; gap:6px;
+    transition: filter 0.2s ease;
+  }
+  .quick-btn:hover{ filter:brightness(1.2); }
+  .quick-btn .dot{ width:8px; height:8px; border-radius:50%; }
+
+  .add-custom{
+    display:flex; gap:8px; width:100%; margin-bottom:24px;
+  }
+  .add-custom input[type="text"]{
+    flex:1; background:var(--bg-soft); border:1px solid var(--line); color:var(--text); font-family:inherit;
+    font-size:13px; padding:10px 12px; border-radius:8px;
+  }
+  .add-custom input[type="text"]:focus{ outline:none; border-color:var(--muted); }
+  .add-custom button{
+    font-family:inherit; background:var(--bg-soft2); border:1px solid var(--line); color:var(--text);
+    font-size:13px; font-weight:500; padding:10px 16px; border-radius:8px; cursor:pointer;
+  }
+  .add-custom button:hover{ filter:brightness(1.15); }
+
+  .start-row{ display:flex; gap:12px; width:100%; }
+  .start-btn{
+    flex:1; font-family:inherit; background:var(--session); border:none; color:#1A1206;
+    font-size:15px; font-weight:600; padding:14px; border-radius:10px; cursor:pointer;
+  }
+  .start-btn:hover{ filter:brightness(1.08); }
+  .start-btn:disabled{ opacity:0.4; cursor:default; }
+
+  .empty-msg{ font-size:13px; color:var(--muted); padding:20px 0; text-align:center; width:100%; }
+
+  .toast{
+    position:absolute; bottom:100px; left:50%; transform:translateX(-50%) translateY(10px);
+    background:var(--bg-soft2); border:1px solid var(--line); color:var(--text);
+    font-size:13px; font-weight:500; padding:10px 18px; border-radius:20px;
+    opacity:0; pointer-events:none; transition: opacity 0.25s ease, transform 0.25s ease; z-index:10;
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  @media (max-width: 560px){
+    .controls{ bottom:24px; }
+    .hint{ display:none; }
+    .info-cards{ gap:10px; }
+    .info-card{ min-width:120px; padding:10px 12px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <div class="top-right" id="topRight">
+    <button class="icon-btn" id="notifBtn" title="Enable notifications">🔔</button>
+    <button class="icon-btn" id="editBtn" title="Edit queue (E)">✎</button>
+    <button class="icon-btn" id="muteBtn" title="Mute sound (M)">🔊</button>
+    <button class="icon-btn" id="themeBtn" title="Toggle theme (T)">☾</button>
+    <button class="ghost-btn" id="fsBtn" title="Full screen (F)">Full screen</button>
+  </div>
+
+  <!-- RUN VIEW -->
+  <div id="runView">
+    <div class="queue-pos" id="queuePos">Segment 1 of 1</div>
+    <div class="state-label" id="stateLabel">Session</div>
+
+    <div class="ring-wrap">
+      <svg class="ring" viewBox="0 0 200 200">
+        <circle class="ring-track" cx="100" cy="100" r="94"></circle>
+        <circle class="ring-progress" id="ringProgress" cx="100" cy="100" r="94" stroke="#E8963D" stroke-dasharray="590.6" stroke-dashoffset="0"></circle>
+      </svg>
+      <div style="display:flex; flex-direction:column; align-items:center;">
+        <div class="clock" id="clock">25:00</div>
+        <div class="sub" id="sub">Minutes remaining</div>
+      </div>
+    </div>
+
+    <div class="info-cards">
+      <div class="info-card">
+        <div class="lbl">ENDS AT</div>
+        <div class="val" id="endsAt">--:--</div>
+      </div>
+      <div class="info-card" id="nextCard">
+        <div class="lbl">NEXT UP</div>
+        <div class="val" id="nextInfo">--</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETUP VIEW -->
+  <div id="setupView">
+    <h1>Build your schedule</h1>
+    <div class="lead">Add segments in the order they should run, set each duration, then start.</div>
+
+    <div class="presets-section">
+      <h2>Saved presets</h2>
+      <div class="preset-list" id="presetList"></div>
+      <div class="preset-empty" id="presetEmpty">No saved presets yet.</div>
+      <div class="save-preset-row">
+        <input type="text" id="presetName" placeholder="Name this schedule (e.g. Deep work day)" />
+        <button id="savePresetBtn">Save as preset</button>
+      </div>
+    </div>
+
+    <h2>Queue</h2>
+    <div class="queue-list" id="queueList"></div>
+    <div class="empty-msg" id="emptyMsg">No segments yet — add one below to get started.</div>
+
+    <div class="quick-add">
+      <button class="quick-btn" style="border-color:var(--session); color:var(--session);" data-type="session" data-name="Session" data-min="25"><span class="dot" style="background:var(--session);"></span>+ Session</button>
+      <button class="quick-btn" style="border-color:var(--break); color:var(--break);" data-type="break" data-name="Short break" data-min="5"><span class="dot" style="background:var(--break);"></span>+ Short break</button>
+      <button class="quick-btn" style="border-color:var(--lunch); color:var(--lunch);" data-type="lunch" data-name="Lunch break" data-min="60"><span class="dot" style="background:var(--lunch);"></span>+ Lunch break</button>
+    </div>
+
+    <div class="add-custom">
+      <input type="text" id="customName" placeholder="Custom segment name (e.g. Q&amp;A, Workshop)" />
+      <button id="customAddBtn">Add custom</button>
+    </div>
+
+    <div class="start-row">
+      <button class="ghost-btn" id="clearBtn" style="padding:14px 18px;">Clear all</button>
+      <button class="start-btn" id="startFromSetupBtn">Start schedule</button>
+    </div>
+  </div>
+
+  <div class="controls" id="controls">
+    <button class="ctrl" id="resetBtn" title="Back to schedule (R)">Edit queue</button>
+    <button class="ctrl primary" id="startBtn" title="Start / Pause (Space)">Start</button>
+    <button class="ctrl" id="skipBtn" title="Skip to next (N)">Skip</button>
+  </div>
+
+  <div class="hint" id="hint">Space start/pause · N skip · E edit · F fullscreen · M mute · T theme</div>
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+(function(){
+  const app = document.getElementById('app');
+  const runView = document.getElementById('runView');
+  const setupView = document.getElementById('setupView');
+  const clock = document.getElementById('clock');
+  const sub = document.getElementById('sub');
+  const stateLabel = document.getElementById('stateLabel');
+  const queuePos = document.getElementById('queuePos');
+  const endsAt = document.getElementById('endsAt');
+  const nextInfo = document.getElementById('nextInfo');
+  const nextCard = document.getElementById('nextCard');
+  const startBtn = document.getElementById('startBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const skipBtn = document.getElementById('skipBtn');
+  const fsBtn = document.getElementById('fsBtn');
+  const muteBtn = document.getElementById('muteBtn');
+  const themeBtn = document.getElementById('themeBtn');
+  const editBtn = document.getElementById('editBtn');
+  const notifBtn = document.getElementById('notifBtn');
+  const controls = document.getElementById('controls');
+  const topRight = document.getElementById('topRight');
+  const hint = document.getElementById('hint');
+  const ringProgress = document.getElementById('ringProgress');
+  const queueList = document.getElementById('queueList');
+  const emptyMsg = document.getElementById('emptyMsg');
+  const customName = document.getElementById('customName');
+  const customAddBtn = document.getElementById('customAddBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const startFromSetupBtn = document.getElementById('startFromSetupBtn');
+  const presetList = document.getElementById('presetList');
+  const presetEmpty = document.getElementById('presetEmpty');
+  const presetName = document.getElementById('presetName');
+  const savePresetBtn = document.getElementById('savePresetBtn');
+  const toast = document.getElementById('toast');
+
+  const CIRC = 2 * Math.PI * 94;
+  ringProgress.setAttribute('stroke-dasharray', CIRC.toFixed(1));
+
+  const colorVar = { session: '--session', break: '--break', lunch: '--lunch', custom: '--custom' };
+
+  /* ---------------- STORAGE ---------------- */
+  const LS_STATE = 'focusTimer.state.v1';
+  const LS_PRESETS = 'focusTimer.presets.v1';
+
+  function loadState(){
+    try{
+      const raw = localStorage.getItem(LS_STATE);
+      if(!raw) return null;
+      return JSON.parse(raw);
+    }catch(e){ return null; }
+  }
+
+  function saveState(){
+    try{
+      localStorage.setItem(LS_STATE, JSON.stringify({
+        segments, theme: isLight() ? 'light' : 'dark', muted
+      }));
+    }catch(e){}
+  }
+
+  function loadPresets(){
+    try{
+      const raw = localStorage.getItem(LS_PRESETS);
+      if(!raw) return [];
+      return JSON.parse(raw);
+    }catch(e){ return []; }
+  }
+
+  function savePresets(){
+    try{ localStorage.setItem(LS_PRESETS, JSON.stringify(presets)); }catch(e){}
+  }
+
+  let presets = loadPresets();
+
+  // segments: [{name, type, minutes}]
+  let segments = [
+    { name: 'Session', type: 'session', minutes: 25 },
+    { name: 'Short break', type: 'break', minutes: 5 }
+  ];
+
+  let idx = 0;
+  let remaining = segments.length ? segments[0].minutes * 60 : 0;
+  let totalSeconds = remaining;
+  let running = false;
+  let intervalId = null;
+  let idleTimeout = null;
+  let muted = false;
+  let inSetup = true;
+
+  const saved = loadState();
+  if(saved){
+    if(Array.isArray(saved.segments) && saved.segments.length){
+      segments = saved.segments;
+      remaining = segments[0].minutes * 60;
+      totalSeconds = remaining;
+    }
+    if(saved.theme === 'light') document.documentElement.classList.add('light');
+    if(typeof saved.muted === 'boolean') muted = saved.muted;
+  }
+
+  function isLight(){ return document.documentElement.classList.contains('light'); }
+
+  function cssColor(type){
+    return getComputedStyle(document.documentElement).getPropertyValue(colorVar[type] || '--session').trim();
+  }
+
+  function fmt(s){
+    s = Math.max(0, s);
+    const m = Math.floor(s/60);
+    const sec = s % 60;
+    return String(m).padStart(2,'0') + ':' + String(sec).padStart(2,'0');
+  }
+
+  function fmtClock(date){
+    let h = date.getHours();
+    const m = String(date.getMinutes()).padStart(2,'0');
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12; if(h === 0) h = 12;
+    return h + ':' + m + ' ' + ampm;
+  }
+
+  let toastTimeout = null;
+  function showToast(msg){
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => toast.classList.remove('show'), 2200);
+  }
+
+  /* ---------------- PRESETS ---------------- */
+
+  function renderPresetList(){
+    presetList.innerHTML = '';
+    presetEmpty.style.display = presets.length ? 'none' : 'block';
+    presets.forEach((p, i) => {
+      const chip = document.createElement('div');
+      chip.className = 'preset-chip';
+
+      const label = document.createElement('span');
+      label.textContent = p.name + ' (' + p.segments.length + ')';
+      chip.appendChild(label);
+
+      const del = document.createElement('button');
+      del.className = 'del';
+      del.textContent = '✕';
+      del.title = 'Delete preset';
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        presets.splice(i, 1);
+        savePresets();
+        renderPresetList();
+      });
+      chip.appendChild(del);
+
+      chip.addEventListener('click', () => {
+        segments = JSON.parse(JSON.stringify(p.segments));
+        renderQueueList();
+        saveState();
+        showToast('Loaded "' + p.name + '"');
+      });
+
+      presetList.appendChild(chip);
+    });
+  }
+
+  savePresetBtn.addEventListener('click', () => {
+    const name = presetName.value.trim();
+    if(!name || segments.length === 0) return;
+    presets.push({ name, segments: JSON.parse(JSON.stringify(segments)) });
+    savePresets();
+    renderPresetList();
+    presetName.value = '';
+    showToast('Preset saved');
+  });
+  presetName.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ savePresetBtn.click(); } });
+
+  /* ---------------- SETUP / QUEUE BUILDER ---------------- */
+
+  function renderQueueList(){
+    queueList.innerHTML = '';
+    emptyMsg.style.display = segments.length ? 'none' : 'block';
+    startFromSetupBtn.disabled = segments.length === 0;
+    segments.forEach((seg, i) => {
+      const row = document.createElement('div');
+      row.className = 'queue-row';
+
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      dot.style.background = 'var(' + colorVar[seg.type] + ')';
+      row.appendChild(dot);
+
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.value = seg.name;
+      nameInput.addEventListener('input', () => { seg.name = nameInput.value; syncRunLabelsIfCurrent(i); saveState(); });
+      row.appendChild(nameInput);
+
+      const typeSelect = document.createElement('select');
+      ['session','break','lunch','custom'].forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t;
+        opt.textContent = t === 'session' ? 'Session' : t === 'break' ? 'Break' : t === 'lunch' ? 'Lunch' : 'Custom';
+        if(t === seg.type) opt.selected = true;
+        typeSelect.appendChild(opt);
+      });
+      typeSelect.addEventListener('change', () => { seg.type = typeSelect.value; dot.style.background = 'var(' + colorVar[seg.type] + ')'; syncRunLabelsIfCurrent(i); saveState(); });
+      row.appendChild(typeSelect);
+
+      const durInput = document.createElement('input');
+      durInput.type = 'number';
+      durInput.className = 'dur';
+      durInput.min = '1';
+      durInput.max = '600';
+      durInput.value = seg.minutes;
+      durInput.addEventListener('change', () => {
+        seg.minutes = Math.max(1, parseInt(durInput.value,10) || 1);
+        if(i === idx && !running){ remaining = seg.minutes * 60; totalSeconds = remaining; }
+        saveState();
+      });
+      row.appendChild(durInput);
+
+      const unit = document.createElement('span');
+      unit.className = 'unit';
+      unit.textContent = 'min';
+      row.appendChild(unit);
+
+      const del = document.createElement('button');
+      del.className = 'del';
+      del.textContent = '✕';
+      del.addEventListener('click', () => { segments.splice(i,1); renderQueueList(); saveState(); });
+      row.appendChild(del);
+
+      queueList.appendChild(row);
+    });
+  }
+
+  function syncRunLabelsIfCurrent(i){
+    if(i === idx) applyModeUI();
+  }
+
+  function addSegment(name, type, minutes){
+    segments.push({ name, type, minutes });
+    renderQueueList();
+    saveState();
+  }
+
+  document.querySelectorAll('.quick-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      addSegment(btn.dataset.name, btn.dataset.type, parseInt(btn.dataset.min,10));
+    });
+  });
+
+  customAddBtn.addEventListener('click', () => {
+    const name = customName.value.trim();
+    if(!name) return;
+    addSegment(name, 'custom', 15);
+    customName.value = '';
+    renderQueueList();
+  });
+  customName.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ customAddBtn.click(); } });
+
+  clearBtn.addEventListener('click', () => { segments = []; renderQueueList(); saveState(); });
+
+  function showSetup(){
+    inSetup = true;
+    setupView.style.display = 'flex';
+    runView.style.display = 'none';
+    controls.style.display = 'none';
+    startFromSetupBtn.disabled = segments.length === 0;
+    renderQueueList();
+    renderPresetList();
+  }
+
+  function showRun(){
+    inSetup = false;
+    setupView.style.display = 'none';
+    runView.style.display = 'flex';
+    controls.style.display = 'flex';
+  }
+
+  startFromSetupBtn.addEventListener('click', () => {
+    if(segments.length === 0) return;
+    idx = 0;
+    remaining = segments[0].minutes * 60;
+    totalSeconds = remaining;
+    skipBtn.disabled = false;
+    startBtn.disabled = false;
+    showRun();
+    render();
+    applyModeUI();
+    start();
+  });
+
+  editBtn.addEventListener('click', () => {
+    pause();
+    showSetup();
+  });
+
+  resetBtn.addEventListener('click', () => {
+    pause();
+    showSetup();
+  });
+
+  /* ---------------- RUN LOGIC ---------------- */
+
+  function currentSeg(){ return segments[idx]; }
+  function nextSeg(){ return segments[idx+1] || null; }
+
+  function render(){
+    clock.textContent = fmt(remaining);
+    const frac = totalSeconds > 0 ? remaining / totalSeconds : 0;
+    ringProgress.style.strokeDashoffset = (CIRC * (1 - frac)).toFixed(1);
+    const seg = currentSeg();
+    if(seg) ringProgress.setAttribute('stroke', cssColor(seg.type));
+    const end = new Date(Date.now() + remaining*1000);
+    endsAt.textContent = fmtClock(end);
+
+    const nxt = nextSeg();
+    if(nxt){
+      const nxtStart = new Date(Date.now() + remaining*1000);
+      nextInfo.textContent = nxt.name + ' · ' + fmtClock(nxtStart);
+      nextCard.style.display = 'block';
+    } else {
+      nextInfo.textContent = 'This is the last segment';
+      nextCard.style.display = 'block';
+    }
+  }
+
+  function applyModeUI(){
+    const seg = currentSeg();
+    if(!seg){
+      stateLabel.textContent = 'All segments complete';
+      stateLabel.style.color = 'var(--muted)';
+      queuePos.textContent = '';
+      sub.textContent = '';
+      return;
+    }
+    stateLabel.textContent = seg.name;
+    stateLabel.style.color = cssColor(seg.type);
+    queuePos.textContent = 'Segment ' + (idx+1) + ' of ' + segments.length;
+    sub.textContent = running ? 'Minutes remaining' : 'Press start when ready';
+  }
+
+  function beep(){
+    if(muted) return;
+    try{
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const now = ctx.currentTime;
+      for(let i=0;i<3;i++){
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = 780;
+        gain.gain.setValueAtTime(0.001, now + i*0.35);
+        gain.gain.exponentialRampToValueAtTime(0.25, now + i*0.35 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i*0.35 + 0.3);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(now + i*0.35);
+        osc.stop(now + i*0.35 + 0.32);
+      }
+    }catch(e){}
+  }
+
+  function notify(title, body){
+    if(!('Notification' in window)) return;
+    if(Notification.permission !== 'granted') return;
+    try{
+      const n = new Notification(title, { body, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png' });
+      setTimeout(() => n.close(), 8000);
+    }catch(e){}
+  }
+
+  function advance(){
+    beep();
+    const finished = currentSeg();
+    idx += 1;
+    if(idx >= segments.length){
+      if(finished) notify('Schedule complete', finished.name + ' just ended — that was the last segment.');
+      pause();
+      remaining = 0; totalSeconds = 1;
+      render();
+      applyModeUI();
+      skipBtn.disabled = true;
+      startBtn.disabled = true;
+      return;
+    }
+    const upNext = segments[idx];
+    if(finished) notify(finished.name + ' done', 'Next up: ' + upNext.name + ' (' + upNext.minutes + ' min)');
+    remaining = upNext.minutes * 60;
+    totalSeconds = remaining;
+    render();
+    applyModeUI();
+  }
+
+  function tick(){
+    remaining -= 1;
+    if(remaining <= 0){ advance(); return; }
+    render();
+  }
+
+  function start(){
+    if(running || !currentSeg()) return;
+    running = true;
+    startBtn.textContent = 'Pause';
+    intervalId = setInterval(tick, 1000);
+    applyModeUI();
+  }
+
+  function pause(){
+    running = false;
+    startBtn.textContent = 'Start';
+    clearInterval(intervalId);
+    applyModeUI();
+  }
+
+  function toggleStartPause(){
+    if(inSetup) return;
+    running ? pause() : start();
+  }
+
+  function skip(){
+    if(inSetup) return;
+    pause();
+    advance();
+  }
+
+  function toggleMute(){
+    muted = !muted;
+    muteBtn.textContent = muted ? '🔇' : '🔊';
+    saveState();
+  }
+
+  function toggleTheme(){
+    document.documentElement.classList.toggle('light');
+    themeBtn.textContent = isLight() ? '☀' : '☾';
+    render();
+    saveState();
+  }
+
+  function toggleFullscreen(){
+    if(!document.fullscreenElement){
+      app.requestFullscreen().catch(()=>{});
+      fsBtn.textContent = 'Exit full screen';
+    } else {
+      document.exitFullscreen().catch(()=>{});
+      fsBtn.textContent = 'Full screen';
+    }
+  }
+
+  function updateNotifBtn(){
+    if(!('Notification' in window)){ notifBtn.style.display = 'none'; return; }
+    if(Notification.permission === 'granted'){ notifBtn.textContent = '🔔'; notifBtn.title = 'Notifications on'; }
+    else { notifBtn.textContent = '🔕'; notifBtn.title = 'Enable notifications'; }
+  }
+
+  notifBtn.addEventListener('click', () => {
+    if(!('Notification' in window)) return;
+    if(Notification.permission === 'default'){
+      Notification.requestPermission().then(updateNotifBtn);
+    } else if(Notification.permission === 'denied'){
+      showToast('Notifications blocked in browser settings');
+    } else {
+      showToast('Notifications already enabled');
+    }
+  });
+
+  startBtn.addEventListener('click', toggleStartPause);
+  skipBtn.addEventListener('click', skip);
+  muteBtn.addEventListener('click', toggleMute);
+  themeBtn.addEventListener('click', toggleTheme);
+  fsBtn.addEventListener('click', toggleFullscreen);
+
+  document.addEventListener('fullscreenchange', () => {
+    fsBtn.textContent = document.fullscreenElement ? 'Exit full screen' : 'Full screen';
+  });
+
+  document.addEventListener('keydown', (e) => {
+    const tag = (e.target && e.target.tagName) || '';
+    if(tag === 'INPUT' || tag === 'SELECT') return;
+    switch(e.code){
+      case 'Space': e.preventDefault(); toggleStartPause(); break;
+      case 'KeyN': skip(); break;
+      case 'KeyE': pause(); showSetup(); break;
+      case 'KeyF': toggleFullscreen(); break;
+      case 'KeyM': toggleMute(); break;
+      case 'KeyT': toggleTheme(); break;
+    }
+  });
+
+  function showChrome(){
+    controls.classList.remove('idle-hide');
+    topRight.classList.remove('idle-hide');
+    hint.classList.remove('idle-hide');
+    clearTimeout(idleTimeout);
+    if(running){
+      idleTimeout = setTimeout(() => {
+        controls.classList.add('idle-hide');
+        topRight.classList.add('idle-hide');
+        hint.classList.add('idle-hide');
+      }, 3000);
+    }
+  }
+  ['mousemove','touchstart','keydown'].forEach(evt => document.addEventListener(evt, showChrome));
+  showChrome();
+
+  // live-update "ends at" clock even while paused, once per second
+  setInterval(() => { if(!inSetup) render(); }, 1000);
+
+  // initial UI state from restored theme/mute
+  themeBtn.textContent = isLight() ? '☀' : '☾';
+  muteBtn.textContent = muted ? '🔇' : '🔊';
+  updateNotifBtn();
+
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
+
+  showSetup();
+})();
+</script>
+
+</body>
+</html>
